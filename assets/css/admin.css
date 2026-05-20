@@ -1,0 +1,53 @@
+/* ============================================================
+   Stock Content Marketplace — Admin CSS
+   ============================================================ */
+
+/* Meta Box Grid */
+.scm-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 4px 0; }
+.scm-meta-row { display: flex; flex-direction: column; gap: 6px; }
+.scm-meta-row label { font-weight: 600; font-size: 13px; color: #1d2327; }
+.scm-meta-row input[type="text"],
+.scm-meta-row input[type="url"],
+.scm-meta-row input[type="number"],
+.scm-meta-row select { width: 100%; border: 1px solid #8c8f94; border-radius: 4px; padding: 8px 10px; font-size: 13px; }
+.scm-meta-row input:focus, .scm-meta-row select:focus { border-color: #2271b1; outline: 2px solid rgba(34,113,177,.3); }
+.scm-meta-row.scm-checkboxes { flex-direction: row; align-items: center; }
+.scm-meta-row.scm-checkboxes label { font-weight: 500; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* Gallery / File Uploader */
+.scm-gallery-uploader, .scm-file-uploader { display: flex; flex-direction: column; gap: 10px; }
+.scm-gallery-preview { display: flex; flex-wrap: wrap; gap: 8px; }
+.scm-gallery-preview img { width: 70px; height: 70px; object-fit: cover; border-radius: 6px; border: 2px solid #ddd; }
+.scm-file-uploader { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+.scm-file-uploader input[readonly] { flex: 1; background: #f6f7f7; }
+
+/* Stats Box */
+.scm-stats-box { padding: 4px 0; }
+.scm-stats-box p { margin: 0 0 8px; font-size: 14px; }
+
+/* Settings Page */
+.scm-admin-settings .scm-settings-tabs { background: #fff; border: 1px solid #c3c4c7; border-radius: 6px; overflow: hidden; }
+.scm-tabs-nav { display: flex; border-bottom: 1px solid #c3c4c7; background: #f6f7f7; flex-wrap: wrap; }
+.scm-tab-link { padding: 12px 20px; text-decoration: none; color: #50575e; font-size: 14px; font-weight: 500; border-right: 1px solid #c3c4c7; transition: all .15s; }
+.scm-tab-link:hover, .scm-tab-link.active { background: #fff; color: #2271b1; border-bottom: 2px solid #2271b1; }
+.scm-tab-pane { display: none; padding: 20px; }
+.scm-tab-pane.active { display: block; }
+
+/* Admin Dashboard */
+.scm-admin-dashboard { }
+.scm-stat-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 32px; }
+.scm-stat-card { background: #fff; border: 1px solid #c3c4c7; border-radius: 8px; padding: 24px; text-align: center; }
+.scm-stat-number { font-size: 36px; font-weight: 900; color: #2271b1; }
+.scm-stat-label { font-size: 14px; color: #50575e; margin-top: 4px; }
+
+/* Premium fields visibility toggle */
+.scm-premium-fields { opacity: .4; pointer-events: none; }
+.scm-premium-fields.active { opacity: 1; pointer-events: auto; }
+
+/* WC Create Product button */
+.scm-create-woo-product { margin-top: 8px; }
+
+@media (max-width: 780px) {
+  .scm-meta-grid { grid-template-columns: 1fr; }
+  .scm-stat-cards { grid-template-columns: 1fr; }
+}
