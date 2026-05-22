@@ -65,6 +65,24 @@ function scm_render_asset_details_box( $post ) {
             <label><input type="checkbox" name="scm_is_featured" value="1" <?php checked( $meta['is_featured'], '1' ); ?> /> <?php esc_html_e( 'Featured', 'scm' ); ?></label>
         </div>
         <div class="scm-meta-row">
+            <label><?php esc_html_e( 'Featured Media', 'scm' ); ?></label>
+            <select name="scm_featured_media">
+                <option value="image" <?php selected( $meta['featured_media'], 'image' ); ?>><?php esc_html_e( 'Image', 'scm' ); ?></option>
+                <option value="video" <?php selected( $meta['featured_media'], 'video' ); ?>><?php esc_html_e( 'Video', 'scm' ); ?></option>
+            </select>
+        </div>
+        <div class="scm-meta-row">
+            <label><?php esc_html_e( 'Featured Video (select from Media Library)', 'scm' ); ?></label>
+            <div class="scm-file-uploader">
+                <input type="hidden" name="scm_featured_video_id" id="scm_featured_video_id" value="<?php echo esc_attr( $meta['featured_video_id'] ?? '' ); ?>" />
+                <input type="text" id="scm_featured_video_url" value="<?php echo esc_attr( ! empty( $meta['featured_video_id'] ) ? wp_get_attachment_url( intval( $meta['featured_video_id'] ) ) : ( $meta['video_preview_url'] ?? '' ) ); ?>" readonly placeholder="<?php esc_attr_e( 'No video selected', 'scm' ); ?>" />
+                <button type="button" class="button scm-upload-featured-video" data-target="scm_featured_video_id" data-display="scm_featured_video_url"><?php esc_html_e( 'Select Video', 'scm' ); ?></button>
+                <?php if ( ! empty( $meta['featured_video_id'] ) ) : ?>
+                    <a href="<?php echo esc_url( wp_get_attachment_url( intval( $meta['featured_video_id'] ) ) ); ?>" target="_blank" class="button"><?php esc_html_e( 'View Video', 'scm' ); ?></a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="scm-meta-row">
             <label><?php esc_html_e( 'Preview Image Gallery (comma-separated attachment IDs)', 'scm' ); ?></label>
             <div class="scm-gallery-uploader">
                 <input type="hidden" name="scm_gallery_ids" id="scm_gallery_ids" value="<?php echo esc_attr( $meta['gallery_ids'] ); ?>" />
@@ -166,7 +184,7 @@ function scm_render_stats_box( $post ) {
 function scm_get_all_meta( $post_id ) {
     $keys = [
         'file_format', 'file_size', 'resolution', 'dimensions', 'duration',
-        'license_type', 'video_preview_url', 'author_name', 'author_url',
+        'license_type', 'video_preview_url', 'video_preview_id', 'video_file_url', 'video_file_id', 'featured_media', 'featured_video_id', 'featured_video_url', 'author_name', 'author_url',
         'related_collection', 'is_featured', 'gallery_ids',
         'download_file_id', 'additional_files',
         'is_free', 'is_premium', 'regular_price', 'sale_price', 'currency',
@@ -192,10 +210,10 @@ function scm_save_meta_boxes( $post_id, $post ) {
     $text_fields = [
         'scm_file_format', 'scm_file_size', 'scm_resolution', 'scm_dimensions',
         'scm_duration', 'scm_license_type', 'scm_author_name', 'scm_related_collection',
-        'scm_gallery_ids', 'scm_additional_files', 'scm_currency', 'scm_access_type',
+        'scm_gallery_ids', 'scm_additional_files', 'scm_currency', 'scm_access_type', 'scm_featured_media',
     ];
-    $url_fields  = [ 'scm_video_preview_url', 'scm_author_url' ];
-    $int_fields  = [ 'scm_download_file_id', 'scm_woo_product_id' ];
+    $url_fields  = [ 'scm_video_preview_url', 'scm_author_url', 'scm_featured_video_url' ];
+    $int_fields  = [ 'scm_download_file_id', 'scm_woo_product_id', 'scm_featured_video_id' ];
     $float_fields= [ 'scm_regular_price', 'scm_sale_price' ];
     $bool_fields = [ 'scm_is_featured', 'scm_is_free', 'scm_is_premium' ];
 
@@ -214,5 +232,21 @@ function scm_save_meta_boxes( $post_id, $post ) {
     }
     foreach ( $bool_fields as $field ) {
         update_post_meta( $post_id, $field, isset( $_POST[ $field ] ) ? '1' : '0' );
+    }
+
+    // Auto-generate a thumbnail from a video attachment when the asset has no thumbnail yet.
+    $current_thumbnail = get_post_meta( $post_id, 'scm_thumbnail_url', true );
+    if ( empty( $current_thumbnail ) ) {
+        $video_ids = [
+            intval( $_POST['scm_download_file_id'] ?? 0 ),
+            intval( $_POST['scm_video_file_id'] ?? 0 ),
+            intval( $_POST['scm_video_preview_id'] ?? 0 ),
+        ];
+        foreach ( $video_ids as $video_id ) {
+            if ( $video_id && strpos( get_post_mime_type( $video_id ), 'video/' ) === 0 ) {
+                scm_generate_video_thumbnail_for_asset( $post_id, $video_id );
+                break;
+            }
+        }
     }
 }

@@ -3,6 +3,10 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 add_action( 'wp_ajax_scm_search',        'scm_ajax_search' );
 add_action( 'wp_ajax_nopriv_scm_search', 'scm_ajax_search' );
+add_action( 'wp_ajax_scm_get_similar',        'scm_ajax_get_similar' );
+add_action( 'wp_ajax_nopriv_scm_get_similar', 'scm_ajax_get_similar' );
+add_action( 'wp_ajax_scm_get_quick_view',        'scm_ajax_get_quick_view' );
+add_action( 'wp_ajax_nopriv_scm_get_quick_view', 'scm_ajax_get_quick_view' );
 
 function scm_ajax_search() {
     check_ajax_referer( 'scm_nonce', 'nonce' );
@@ -158,6 +162,147 @@ function scm_build_query_args( $params ) {
     return $args;
 }
 
+function scm_ajax_get_similar() {
+    check_ajax_referer( 'scm_nonce', 'nonce' );
+    $post_id = intval( $_POST['asset_id'] ?? 0 );
+    if ( ! $post_id ) {
+        wp_send_json_error( [ 'message' => esc_html__( 'Invalid asset ID', 'scm' ) ] );
+    }
+
+    $terms = wp_get_object_terms( $post_id, [ 'asset_type', 'asset_category' ], [ 'fields' => 'ids' ] );
+    
+    ob_start();
+    if ( ! empty( $terms ) ) {
+        $query = new WP_Query( [
+            'post_type'      => 'stock_asset',
+            'posts_per_page' => 4,
+            'post__not_in'   => [ $post_id ],
+            'tax_query'      => [
+                'relation' => 'OR',
+                [ 'taxonomy' => 'asset_type', 'field' => 'id', 'terms' => $terms, 'operator' => 'IN' ],
+                [ 'taxonomy' => 'asset_category', 'field' => 'id', 'terms' => $terms, 'operator' => 'IN' ],
+            ],
+        ] );
+        if ( $query->have_posts() ) {
+            while ( $query->have_posts() ) {
+                $query->the_post();
+                scm_render_asset_card( get_the_ID() );
+            }
+            wp_reset_postdata();
+        } else {
+            echo '<p class="scm-no-similar-found">' . esc_html__( 'No similar assets found.', 'scm' ) . '</p>';
+        }
+    } else {
+        echo '<p class="scm-no-similar-found">' . esc_html__( 'No similar assets found.', 'scm' ) . '</p>';
+    }
+    $html = ob_get_clean();
+    wp_send_json_success( [ 'html' => $html ] );
+}
+
+function scm_ajax_get_quick_view() {
+    check_ajax_referer( 'scm_nonce', 'nonce' );
+    $post_id = intval( $_POST['asset_id'] ?? 0 );
+    if ( ! $post_id ) {
+        wp_send_json_error( [ 'message' => esc_html__( 'Invalid asset ID', 'scm' ) ] );
+    }
+
+    $meta        = scm_get_all_meta( $post_id );
+    $is_premium  = $meta['is_premium'] === '1';
+    $is_free     = $meta['is_free'] === '1' || ! $is_premium;
+    $price_html  = scm_get_price_html( $post_id );
+    $dl_button   = scm_get_download_button_html( $post_id );
+    $thumb       = get_the_post_thumbnail_url( $post_id, 'full' ) ?: get_post_meta( $post_id, 'scm_thumbnail_url', true );
+    $featured_media = $meta['featured_media'] ?? 'image';
+    $featured_video_id = ! empty( $meta['featured_video_id'] ) ? intval( $meta['featured_video_id'] ) : 0;
+    
+    ob_start();
+    ?>
+    <div class="scm-qv-wrapper">
+        <!-- Main Media Preview Section -->
+        <div class="scm-qv-preview">
+            <?php if ( $featured_media === 'video' && $featured_video_id ) : 
+                $video_src = wp_get_attachment_url( $featured_video_id );
+            ?>
+                <div class="scm-qv-media-wrap video">
+                    <video controls autoplay loop playsinline poster="<?php echo esc_url( $thumb ); ?>">
+                        <source src="<?php echo esc_url( $video_src ); ?>" type="<?php echo esc_attr( get_post_mime_type( $featured_video_id ) ); ?>" />
+                    </video>
+                </div>
+            <?php elseif ( ! empty( $meta['video_preview_url'] ) ) : ?>
+                <div class="scm-qv-media-wrap video">
+                    <video controls autoplay loop playsinline poster="<?php echo esc_url( $thumb ); ?>">
+                        <source src="<?php echo esc_url( $meta['video_preview_url'] ); ?>" type="<?php echo esc_attr( wp_check_filetype( $meta['video_preview_url'] )['type'] ?? '' ); ?>" />
+                    </video>
+                </div>
+            <?php elseif ( $thumb ) : ?>
+                <div class="scm-qv-media-wrap image">
+                    <img src="<?php echo esc_url( $thumb ); ?>" alt="<?php echo esc_attr( get_the_title( $post_id ) ); ?>" />
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Info & Action Section -->
+        <div class="scm-qv-info">
+            <div class="scm-qv-header">
+                <h2 class="scm-qv-title"><?php echo esc_html( get_the_title( $post_id ) ); ?></h2>
+                <div class="scm-qv-badges">
+                    <?php if ( $is_free ) : ?>
+                        <span class="scm-badge scm-badge-free"><?php esc_html_e( 'Free Asset', 'scm' ); ?></span>
+                    <?php elseif ( $is_premium ) : ?>
+                        <span class="scm-badge scm-badge-premium"><span class="scm-crown-icon">&#9812;</span> <?php esc_html_e( 'Premium Asset', 'scm' ); ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Price & Button (Download or Premium Buy) -->
+            <div class="scm-qv-actions">
+                <div class="scm-qv-price-block">
+                    <?php echo $price_html; ?>
+                </div>
+                <div class="scm-qv-cta-block">
+                    <?php echo $dl_button; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- Related Products Section at the bottom of popup -->
+        <div class="scm-qv-related">
+            <h3><?php esc_html_e( 'Related Assets', 'scm' ); ?></h3>
+            <div class="scm-qv-related-grid">
+                <?php
+                $terms = wp_get_object_terms( $post_id, [ 'asset_type', 'asset_category' ], [ 'fields' => 'ids' ] );
+                if ( ! empty( $terms ) ) {
+                    $related_query = new WP_Query( [
+                        'post_type'      => 'stock_asset',
+                        'posts_per_page' => 4,
+                        'post__not_in'   => [ $post_id ],
+                        'tax_query'      => [
+                            'relation' => 'OR',
+                            [ 'taxonomy' => 'asset_type', 'field' => 'id', 'terms' => $terms, 'operator' => 'IN' ],
+                            [ 'taxonomy' => 'asset_category', 'field' => 'id', 'terms' => $terms, 'operator' => 'IN' ],
+                        ],
+                    ] );
+                    if ( $related_query->have_posts() ) {
+                        while ( $related_query->have_posts() ) {
+                            $related_query->the_post();
+                            scm_render_asset_card( get_the_ID() );
+                        }
+                        wp_reset_postdata();
+                    } else {
+                        echo '<p class="scm-no-related-found">' . esc_html__( 'No related assets found.', 'scm' ) . '</p>';
+                    }
+                } else {
+                    echo '<p class="scm-no-related-found">' . esc_html__( 'No related assets found.', 'scm' ) . '</p>';
+                }
+                ?>
+            </div>
+        </div>
+    </div>
+    <?php
+    $html = ob_get_clean();
+    wp_send_json_success( [ 'html' => $html ] );
+}
+
 function scm_render_asset_card( $post_id = null ) {
     if ( ! $post_id ) $post_id = get_the_ID();
     $meta       = scm_get_all_meta( $post_id );
@@ -170,9 +315,24 @@ function scm_render_asset_card( $post_id = null ) {
     $dl_count   = intval( get_post_meta( $post_id, 'scm_download_count', true ) );
     $favorited  = scm_is_favorited( $post_id );
     $types      = get_the_terms( $post_id, 'asset_type' );
+    $categories = get_the_terms( $post_id, 'asset_category' );
     $type_name  = $types && ! is_wp_error( $types ) ? esc_html( $types[0]->name ) : '';
     $thumb      = get_the_post_thumbnail_url( $post_id, 'large' ) ?: get_post_meta( $post_id, 'scm_thumbnail_url', true );
     $permalink  = get_permalink( $post_id );
+
+    // Build Similar Discover URL — points to taxonomy archive (grid view of all similar assets)
+    $similar_url = '';
+    if ( $types && ! is_wp_error( $types ) ) {
+        $term = $types[0];
+        $tax_link = get_term_link( $term, 'asset_type' );
+        $similar_url = ! is_wp_error( $tax_link ) ? $tax_link : get_post_type_archive_link( 'stock_asset' );
+    } elseif ( $categories && ! is_wp_error( $categories ) ) {
+        $term = $categories[0];
+        $tax_link = get_term_link( $term, 'asset_category' );
+        $similar_url = ! is_wp_error( $tax_link ) ? $tax_link : get_post_type_archive_link( 'stock_asset' );
+    } else {
+        $similar_url = get_post_type_archive_link( 'stock_asset' );
+    }
     ?>
     <div class="scm-card" data-id="<?php echo esc_attr( $post_id ); ?>">
         <div class="scm-card-thumb">
@@ -183,7 +343,8 @@ function scm_render_asset_card( $post_id = null ) {
             <?php endif; ?>
 
             <?php if ( ! empty( $meta['video_preview_url'] ) ) : ?>
-                <video class="scm-card-video-preview" src="<?php echo esc_url( $meta['video_preview_url'] ); ?>" muted loop preload="none"></video>
+                <video class="scm-card-video-preview" src="<?php echo esc_url( $meta['video_preview_url'] ); ?>" muted loop preload="metadata" <?php echo $thumb ? 'poster="' . esc_url( $thumb ) . '"' : ''; ?>></video>
+                <span class="scm-video-duration"></span>
             <?php endif; ?>
 
             <?php if ( $is_premium ) : ?>
@@ -197,15 +358,15 @@ function scm_render_asset_card( $post_id = null ) {
             <?php endif; ?>
 
             <div class="scm-card-actions">
-                <button class="scm-btn-preview" data-id="<?php echo esc_attr( $post_id ); ?>" title="<?php esc_attr_e( 'Preview', 'scm' ); ?>">
-                    <span class="dashicons dashicons-visibility"></span>
-                </button>
                 <button class="scm-btn-favorite <?php echo $favorited ? 'is-favorited' : ''; ?>" data-id="<?php echo esc_attr( $post_id ); ?>" title="<?php esc_attr_e( 'Favorite', 'scm' ); ?>">
                     <span class="dashicons dashicons-heart"></span>
                 </button>
                 <button class="scm-btn-collection" data-id="<?php echo esc_attr( $post_id ); ?>" title="<?php esc_attr_e( 'Add to Collection', 'scm' ); ?>">
                     <span class="dashicons dashicons-plus-alt"></span>
                 </button>
+                <a class="scm-btn-similar" href="<?php echo esc_url( $similar_url ); ?>" title="<?php esc_attr_e( 'Similar Discover', 'scm' ); ?>">
+                    <span class="dashicons dashicons-search"></span>
+                </a>
                 <button class="scm-btn-download" data-id="<?php echo esc_attr( $post_id ); ?>" data-premium="<?php echo $is_premium ? '1' : '0'; ?>" title="<?php esc_attr_e( 'Download', 'scm' ); ?>">
                     <span class="dashicons dashicons-download"></span>
                 </button>

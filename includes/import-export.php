@@ -296,6 +296,33 @@ function scm_do_import( $file_path ) {
             if ( $attach_id ) update_post_meta( $new_post_id, 'scm_download_file_id', $attach_id );
         }
 
+            // Handle video file URLs (sideload videos and save attachment ID)
+            $video_file_url = $get_val(['video_file_url', 'video', 'video_url', 'file_url']);
+            if ( $video_file_url ) {
+                // Save original URL first
+                update_post_meta( $new_post_id, 'scm_video_file_url', $video_file_url );
+                // Attempt to sideload and, if successful, save attachment ID and URL
+                $vid_attach = scm_sideload_file_from_url( $video_file_url, $new_post_id );
+                if ( $vid_attach ) {
+                    update_post_meta( $new_post_id, 'scm_video_file_id', $vid_attach );
+                    $attach_url = wp_get_attachment_url( $vid_attach );
+                    if ( $attach_url ) update_post_meta( $new_post_id, 'scm_video_file_url', $attach_url );
+                }
+            }
+
+            // Handle preview video URL (sideload preview video if provided)
+            $preview_video_url = $get_val(['preview_video_url', 'video_preview_url']);
+            if ( $preview_video_url ) {
+                // Save original preview URL then sideload; prefer local attachment URL when available
+                update_post_meta( $new_post_id, 'scm_video_preview_url', $preview_video_url );
+                $preview_attach = scm_sideload_file_from_url( $preview_video_url, $new_post_id );
+                if ( $preview_attach ) {
+                    update_post_meta( $new_post_id, 'scm_video_preview_id', $preview_attach );
+                    $attach_url = wp_get_attachment_url( $preview_attach );
+                    if ( $attach_url ) update_post_meta( $new_post_id, 'scm_video_preview_url', $attach_url );
+                }
+            }
+
         if ( $gallery_urls_str ) {
             update_post_meta( $new_post_id, 'scm_gallery_urls', $gallery_urls_str );
             $urls = array_filter( array_map( 'trim', explode( '|', str_replace(',', '|', $gallery_urls_str) ) ) );
@@ -336,11 +363,24 @@ function scm_sideload_file_from_url( $url, $post_id ) {
 
     if ( ! preg_match('/\.[a-zA-Z0-9]+$/', $filename) ) {
         $mime = mime_content_type($tmp);
-        $ext_map = ['image/jpeg' => '.jpg', 'image/png' => '.png', 'image/webp' => '.webp', 'image/gif' => '.gif', 'video/mp4' => '.mp4', 'application/zip' => '.zip'];
+        $ext_map = [
+            'image/jpeg' => '.jpg',
+            'image/png'  => '.png',
+            'image/webp' => '.webp',
+            'image/gif'  => '.gif',
+            'video/mp4'  => '.mp4',
+            'video/quicktime' => '.mov',
+            'video/x-msvideo' => '.avi',
+            'video/webm' => '.webm',
+            'video/ogg'  => '.ogv',
+            'video/x-m4v' => '.m4v',
+            'application/zip' => '.zip'
+        ];
         if ( $mime && isset($ext_map[$mime]) ) {
             $filename .= $ext_map[$mime];
         } else {
-            $filename .= '.jpg';
+            // fallback to .bin to avoid invalid image extension for unknown types
+            $filename .= '.bin';
         }
     }
 
@@ -352,6 +392,9 @@ function scm_sideload_file_from_url( $url, $post_id ) {
     if ( is_wp_error( $id ) ) {
         @unlink( $file_array['tmp_name'] );
         return false;
+    }
+    if ( strpos( get_post_mime_type( $id ), 'video/' ) === 0 ) {
+        scm_generate_video_thumbnail_for_asset( $post_id, $id );
     }
     return $id;
 }

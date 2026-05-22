@@ -17,6 +17,8 @@ $types       = get_the_terms( $post_id, 'asset_type' );
 $categories  = get_the_terms( $post_id, 'asset_category' );
 $tags        = get_the_terms( $post_id, 'asset_tag' );
 $thumb       = get_the_post_thumbnail_url( $post_id, 'full' ) ?: get_post_meta( $post_id, 'scm_thumbnail_url', true );
+$featured_media = $meta['featured_media'] ?? 'image';
+$featured_video_id = ! empty( $meta['featured_video_id'] ) ? intval( $meta['featured_video_id'] ) : 0;
 $gallery_ids = array_filter( explode( ',', $meta['gallery_ids'] ?? '' ) );
 $author_name = $meta['author_name'] ?: get_the_author_meta( 'display_name' );
 $author_url  = $meta['author_url'] ?: get_author_posts_url( get_the_author_meta( 'ID' ) );
@@ -25,17 +27,36 @@ $dl_button   = scm_get_download_button_html( $post_id );
 $favorited   = scm_is_favorited( $post_id );
 ?>
 
-<div class="scm-single-wrapper">
+<div class="scm-single-wrapper" data-id="<?php echo esc_attr( $post_id ); ?>">
     <div class="scm-single-breadcrumbs"><?php echo scm_get_breadcrumbs(); ?></div>
 
     <div class="scm-single-layout">
 
         <!-- LEFT: Preview -->
         <div class="scm-single-preview">
-            <?php if ( ! empty( $meta['video_preview_url'] ) ) : ?>
-                <div class="scm-preview-video">
-                    <video controls autoplay muted loop>
-                        <source src="<?php echo esc_url( $meta['video_preview_url'] ); ?>" />
+            <?php if ( $featured_media === 'video' && $featured_video_id ) :
+                $video_src = wp_get_attachment_url( $featured_video_id );
+                $container_style = $thumb ? 'style="background-image: url(' . esc_url( $thumb ) . ');"' : '';
+            ?>
+                <div class="scm-preview-video" <?php echo $container_style; ?>>
+                    <div class="scm-preview-video-poster" <?php echo $thumb ? 'style="background-image: url(' . esc_url( $thumb ) . ');"' : ''; ?>></div>
+                    <div class="scm-preview-video-overlay">
+                        <span class="scm-preview-play-icon"></span>
+                    </div>
+                    <video controls muted loop playsinline preload="none" poster="<?php echo esc_url( $thumb ); ?>">
+                        <source src="<?php echo esc_url( $video_src ); ?>" type="<?php echo esc_attr( get_post_mime_type( $featured_video_id ) ); ?>" />
+                    </video>
+                </div>
+            <?php elseif ( ! empty( $meta['video_preview_url'] ) ) :
+                $container_style = $thumb ? 'style="background-image: url(' . esc_url( $thumb ) . ');"' : '';
+            ?>
+                <div class="scm-preview-video" <?php echo $container_style; ?>>
+                    <div class="scm-preview-video-poster" <?php echo $thumb ? 'style="background-image: url(' . esc_url( $thumb ) . ');"' : ''; ?>></div>
+                    <div class="scm-preview-video-overlay">
+                        <span class="scm-preview-play-icon"></span>
+                    </div>
+                    <video controls muted loop playsinline preload="none" poster="<?php echo esc_url( $thumb ); ?>">
+                        <source src="<?php echo esc_url( $meta['video_preview_url'] ); ?>" type="<?php echo esc_attr( wp_check_filetype( $meta['video_preview_url'] )['type'] ?? '' ); ?>" />
                     </video>
                 </div>
             <?php elseif ( $thumb ) : ?>

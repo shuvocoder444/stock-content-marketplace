@@ -21,6 +21,7 @@
       this.bindShareButtons();
       this.bindViewToggle();
       this.bindVideoHover();
+      this.bindPreviewHover();
       this.bindTabsAdmin();
       this.initDynamicColor();
     },
@@ -77,6 +78,8 @@
           } else {
             $lb.show().data('page', page);
           }
+          // Re-init video duration badges for newly loaded cards
+          SCM.initVideoDuration();
         })
         .fail(() => {
           if (page === 1) $grid.html('<p class="scm-error">Search failed. Please try again.</p>');
@@ -188,11 +191,17 @@
         SCM.openPremiumPopup($(this).data('id'));
       });
 
-      $(document).on('click', '.scm-btn-preview', function(e){
+      // Click on card thumbnail image or video to preview in modal
+      $(document).on('click', '.scm-card-thumb', function(e){
+        if ($(e.target).closest('.scm-card-actions, .scm-discover-similar, .scm-crown-badge, .scm-featured-badge, .scm-video-duration').length) {
+          return;
+        }
         e.preventDefault();
-        const assetId = $(this).data('id');
+        const assetId = $(this).closest('.scm-card').data('id');
         SCM.openPreview(assetId);
       });
+
+
 
       $(document).on('click', '.scm-crown-badge', function(e){
         e.stopPropagation();
@@ -232,7 +241,16 @@
     /* ── Modals ── */
     bindModals() {
       $(document).on('click', '.scm-modal-close, .scm-modal-overlay', function(){
-        $(this).closest('.scm-modal').fadeOut(200);
+        const $modal = $(this).closest('.scm-modal');
+        if ($modal.attr('id') === 'scm-preview-modal') {
+          $modal.find('video').each(function() {
+            this.pause();
+            this.src = '';
+            this.load();
+          });
+          $('#scm-preview-content').html('');
+        }
+        $modal.fadeOut(200);
       });
 
       // Premium popup buy now
@@ -312,14 +330,41 @@
     openPreview(assetId) {
       const $modal   = $('#scm-preview-modal');
       const $content = $('#scm-preview-content');
-      const $card    = $(`.scm-card[data-id="${assetId}"]`);
-      const imgSrc   = $card.find('img').attr('src');
-      $content.html(imgSrc ? `<img src="${imgSrc}" alt="Preview" />` : '<p>No preview available.</p>');
+      
+      // Show loading spinner
+      $content.html('<div class="scm-qv-loading"><span class="dashicons dashicons-update scm-spin"></span> Loading Preview...</div>');
       $modal.fadeIn(200);
+
+      $.post(scm_ajax.ajax_url, {
+        action: 'scm_get_quick_view',
+        nonce: scm_ajax.nonce,
+        asset_id: assetId
+      })
+      .done(res => {
+        if (res.success && res.data.html) {
+          $content.html(res.data.html);
+          // Re-initialize video hovers and duration badges for compact cards in quick view
+          SCM.initVideoDuration();
+        } else {
+          $content.html('<p class="scm-error">Could not load preview details.</p>');
+        }
+      })
+      .fail(() => {
+        $content.html('<p class="scm-error">Error loading preview details.</p>');
+      });
     },
 
     /* ── Single Asset Page Actions ── */
     bindSingleActions() {
+      // Click on single page preview image or video poster to preview in modal
+      $(document).on('click', '.scm-preview-image img, .scm-preview-video-poster', function(e){
+        e.preventDefault();
+        const assetId = $(this).closest('.scm-single-wrapper').data('id');
+        if (assetId) {
+          SCM.openPreview(assetId);
+        }
+      });
+
       // Copy link button
       $(document).on('click', '.scm-copy-link', function(){
         const url = $(this).data('url');
@@ -366,12 +411,72 @@
 
     /* ── Video Hover ── */
     bindVideoHover() {
+      // Init duration for videos already in the DOM
+      this.initVideoDuration();
+
       $(document).on('mouseenter', '.scm-card', function(){
         const $video = $(this).find('.scm-card-video-preview');
-        if ($video.length) $video[0].play();
+        if ($video.length) {
+          const v = $video[0];
+          v.currentTime = 0;
+          v.play().catch(() => {});
+        }
       }).on('mouseleave', '.scm-card', function(){
         const $video = $(this).find('.scm-card-video-preview');
-        if ($video.length) { $video[0].pause(); $video[0].currentTime = 0; }
+        if ($video.length) {
+          const v = $video[0];
+          v.pause();
+          v.currentTime = 0.001; // restore first frame
+        }
+      });
+    },
+
+    /* ── Video Duration Init ── */
+    // loadedmetadata does NOT bubble, so we bind directly to each element.
+    initVideoDuration() {
+      document.querySelectorAll('.scm-card-video-preview:not([data-dur-init])').forEach(function(v){
+        v.setAttribute('data-dur-init', '1');
+
+        const applyDuration = function() {
+          const dur = v.duration;
+          if (!dur || !isFinite(dur)) return;
+          const h = Math.floor(dur / 3600);
+          const m = Math.floor((dur % 3600) / 60);
+          const s = Math.floor(dur % 60);
+          const label = h > 0
+            ? h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0')
+            : m + ':' + String(s).padStart(2,'0');
+          const badge = v.nextElementSibling;
+          if (badge && badge.classList.contains('scm-video-duration')) {
+            badge.textContent = label;
+            badge.classList.add('is-visible');
+          }
+          // Snap to first frame for thumbnail
+          if (v.readyState >= 1) v.currentTime = 0.001;
+        };
+
+        if (v.readyState >= 1) {
+          // Metadata already loaded (e.g. cached)
+          applyDuration();
+        } else {
+          v.addEventListener('loadedmetadata', applyDuration, { once: true });
+        }
+      });
+    },
+
+    /* ── Single preview hover play ── */
+    bindPreviewHover() {
+      $(document).on('mouseenter', '.scm-preview-video', function(){
+        const v = $(this).find('video')[0];
+        if (v) {
+          v.muted = true;
+          v.play().catch(() => {});
+          $(this).addClass('is-playing');
+        }
+      }).on('mouseleave', '.scm-preview-video', function(){
+        const v = $(this).find('video')[0];
+        if (v) { v.pause(); v.currentTime = 0; }
+        $(this).removeClass('is-playing');
       });
     },
 

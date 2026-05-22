@@ -84,20 +84,24 @@ function scm_user_has_subscription( $user_id ) {
 
 function scm_generate_download_url( $asset_id ) {
     // Priority: 1) local attached file, 2) download_file_url, 3) video_file_url, 4) thumbnail/preview url
-    $file_id          = get_post_meta( $asset_id, 'scm_download_file_id', true );
-    $file_url_direct  = get_post_meta( $asset_id, 'scm_download_file_url', true );
-    $video_file_url   = get_post_meta( $asset_id, 'scm_video_file_url', true );
-    $thumbnail_url    = get_post_meta( $asset_id, 'scm_thumbnail_url', true );
+    $file_id            = get_post_meta( $asset_id, 'scm_download_file_id', true );
+    $file_url_direct    = get_post_meta( $asset_id, 'scm_download_file_url', true );
+    $video_file_id      = get_post_meta( $asset_id, 'scm_video_file_id', true );
+    $video_file_url     = get_post_meta( $asset_id, 'scm_video_file_url', true );
+    $thumbnail_url      = get_post_meta( $asset_id, 'scm_thumbnail_url', true );
 
     // Determine best available URL
+
+    // Prefer explicit download attachment, then video attachment, then direct URLs
+    $preferred_file_id = $file_id ? intval( $file_id ) : ( $video_file_id ? intval( $video_file_id ) : 0 );
     $fallback_url = $file_url_direct ?: $video_file_url ?: $thumbnail_url ?: '';
 
-    if ( ! $file_id && ! $fallback_url ) return '';
+    if ( ! $preferred_file_id && ! $fallback_url ) return '';
 
     $token = wp_hash( $asset_id . '_' . time() . '_' . get_current_user_id() );
     set_transient( 'scm_dl_' . $token, [
         'asset_id' => $asset_id,
-        'file_id'  => $file_id,
+        'file_id'  => $preferred_file_id,
         'file_url' => $fallback_url,
     ], 300 );
 

@@ -9,6 +9,13 @@
     $(document).on('click', btnSelector, function(e){
       e.preventDefault();
       const $btn = $(this);
+      // Debug: ensure media library is available
+      if ( typeof wp === 'undefined' || typeof wp.media === 'undefined' ) {
+        console.error('WP media is not available on this page.');
+        alert('Media library is not loaded. Please ensure the page allows media uploads (edit the asset in admin).');
+        return;
+      }
+      console.log('Opening media frame for', btnSelector, hiddenId, displayId);
       const frame = wp.media({
         title   : 'Select File',
         multiple: multiple || false,
@@ -41,6 +48,7 @@
 
   mediaUploader('.scm-upload-gallery',  'scm_gallery_ids',      'scm-gallery-preview-display', true);
   mediaUploader('.scm-upload-file',     'scm_download_file_id', 'scm_download_file_url',       false);
+  mediaUploader('.scm-upload-featured-video', 'scm_featured_video_id', 'scm_featured_video_url', false);
 
   /* ── Settings Tabs ── */
   $(document).on('click', '.scm-tab-link', function(e){
